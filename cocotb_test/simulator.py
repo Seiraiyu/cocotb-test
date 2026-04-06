@@ -1176,6 +1176,87 @@ class Verilator(Simulator):
         return cmd
 
 
+class Ryusim(Simulator):
+    def __init__(self, *argv, **kwargs):
+        super().__init__(*argv, **kwargs)
+
+        if self.vhdl_sources:
+            raise ValueError("This simulator does not support VHDL")
+
+        self.sim_file = os.path.join(self.sim_dir, f"lib{self.toplevel_module}.so")
+
+    def set_env(self):
+        super().set_env()
+
+        # Ensure cocotb libs are on the library path
+        existing_ld_path = self.env.get("LD_LIBRARY_PATH", "")
+        self.env["LD_LIBRARY_PATH"] = f"{self.lib_dir}:{existing_ld_path}" if existing_ld_path else self.lib_dir
+
+        # cocotb 2.x GPI loading
+        if cocotb_2x_or_newer and "GPI_USERS" not in self.env:
+            import cocotb_tools.config
+            gpi_users = []
+            libpython_path = self.env.get("LIBPYTHON_LOC") or find_libpython.find_libpython()
+            if libpython_path:
+                gpi_users.append(libpython_path)
+            gpi_users.append(cocotb_tools.config.pygpi_entry_point())
+            self.env["GPI_USERS"] = ";".join(gpi_users)
+
+    def get_include_commands(self, includes):
+        return [f"-I{dir}" for dir in includes]
+
+    def get_define_commands(self, defines):
+        return [f"-D{define}" for define in defines]
+
+    def get_parameter_commands(self, parameters):
+        return [f"-G{name}={value}" for name, value in parameters.items()]
+
+    def compile_command(self):
+        compile_args = self.compile_args + self.extra_args + self.verilog_compile_args
+
+        if self.waves:
+            compile_args.append("--trace-vcd")
+
+        cmd_compile = (
+            [
+                "ryusim",
+                "compile",
+                "--top",
+                self.toplevel_module,
+                "--Mdir",
+                self.sim_dir,
+            ]
+            + self.get_define_commands(self.defines)
+            + self.get_include_commands(self.includes)
+            + self.get_parameter_commands(self.parameters)
+            + compile_args
+            + self.verilog_sources_flat
+        )
+
+        return cmd_compile
+
+    def run_command(self):
+        cocotb_vpi_lib = os.path.join(self.lib_dir, cocotb_config.lib_name("vpi", "ryusim"))
+        return (
+            [self.sim_file]
+            + ["--vpi-load", cocotb_vpi_lib]
+            + self.simulation_args
+            + self.plus_args
+        )
+
+    def build_command(self):
+        cmd = []
+        if self.outdated(self.sim_file, self.verilog_sources_flat) or self.force_compile:
+            cmd.append(self.compile_command())
+        else:
+            self.logger.warning(f"Skipping compilation:{self.sim_file}")
+
+        if not self.compile_only:
+            cmd.append(self.run_command())
+
+        return cmd
+
+
 def run(simulator=None, **kwargs):
 
     __tracebackhide__ = True  # Hide the traceback when using PyTest.
@@ -1200,6 +1281,7 @@ def run(simulator=None, **kwargs):
         "riviera",
         "activehdl",
         "verilator",
+        "ryusim",
     ]
 
     if sim_env not in supported_sim:
@@ -1227,6 +1309,8 @@ def run(simulator=None, **kwargs):
         sim = Activehdl(**kwargs)
     elif sim_env == "verilator":
         sim = Verilator(**kwargs)
+    elif sim_env == "ryusim":
+        sim = Ryusim(**kwargs)
 
     return sim.run()
 
