@@ -1236,7 +1236,10 @@ class Ryusim(Simulator):
         return cmd_compile
 
     def run_command(self):
-        cocotb_vpi_lib = os.path.join(self.lib_dir, cocotb_config.lib_name("vpi", "ryusim"))
+        # cocotb 2.x removed cocotb_tools.config.lib_name; lib_name_path returns
+        # the absolute path to the interface library (lib_dir + filename), which
+        # is exactly what --vpi-load wants. Matches every other Simulator here.
+        cocotb_vpi_lib = str(cocotb_config.lib_name_path("vpi", "ryusim"))
         return (
             [self.sim_file]
             + ["--vpi-load", cocotb_vpi_lib]
