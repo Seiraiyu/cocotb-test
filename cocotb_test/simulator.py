@@ -1217,6 +1217,9 @@ class Ryusim(Simulator):
         if self.waves:
             compile_args.append("--trace-vcd")
 
+        if self.timescale:
+            compile_args += ["--timescale", self.timescale]
+
         cmd_compile = (
             [
                 "ryusim",
@@ -1239,7 +1242,10 @@ class Ryusim(Simulator):
         # cocotb 2.x removed cocotb_tools.config.lib_name; lib_name_path returns
         # the absolute path to the interface library (lib_dir + filename), which
         # is exactly what --vpi-load wants. Matches every other Simulator here.
-        cocotb_vpi_lib = str(cocotb_config.lib_name_path("vpi", "ryusim"))
+        # RyuSim's VPI callback semantics match Verilator's, so cocotb's stock
+        # Verilator VPI library is loaded as-is. There is no "ryusim" VPI
+        # library in released cocotb — only the fork shipped one.
+        cocotb_vpi_lib = str(cocotb_config.lib_name_path("vpi", "verilator"))
         return (
             [self.sim_file]
             + ["--vpi-load", cocotb_vpi_lib]
